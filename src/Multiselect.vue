@@ -46,7 +46,8 @@
           @keydown.enter.prevent
           @keydown.enter.tab.stop.self="addPointerElement($event)"
           @keydown.delete="removeLastElement()"
-          class="multiselect__input"/>
+          class="multiselect__input"
+          :class="inputClass"/>
         <span
           v-if="!searchable"
           class="multiselect__single"

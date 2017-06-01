@@ -192,6 +192,13 @@ export default {
       }
     },
     /**
+     * Additional CSS class to apply on the underlying input element. Anything supported by v-bind:class is allowed.
+     * @default null
+     */
+    inputClass: {
+      default: null
+    },
+    /**
      * Disable / Enable tagging
      * @default false
      * @type {Boolean}
