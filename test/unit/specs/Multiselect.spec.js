@@ -2041,6 +2041,7 @@ describe('Multiselect.vue', () => {
               label: 'id',
               trackBy: 'id',
               multiple: true,
+              inputContainerClass: 'form-group',
               inputClass: 'form-control'
             }
           })
@@ -2053,6 +2054,9 @@ describe('Multiselect.vue', () => {
       }).$mount()
       const inputElement = vm.$el.querySelector('input');
       expect(inputElement.classList.contains('form-control')).to.true;
+
+      const containerElement = inputElement.parentNode;
+      expect(containerElement.classList.contains('form-group')).to.true;
     })
 
   describe('valueKeys', () => {

@@ -245,6 +245,10 @@ exports.default = {
       default: null
     },
 
+    inputContainerClass: {
+      default: null
+    },
+
     taggable: {
       type: Boolean,
       default: false
@@ -867,7 +871,8 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
     }
   })]), _vm._v(" "), _c('div', {
     ref: "tags",
-    staticClass: "multiselect__tags"
+    staticClass: "multiselect__tags",
+    class: _vm.inputContainerClass
   }, [_c('div', {
     directives: [{
       name: "show",

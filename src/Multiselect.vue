@@ -12,7 +12,7 @@
       <slot name="carret">
         <div @mousedown.prevent="toggle()" class="multiselect__select"></div>
       </slot>
-      <div ref="tags" class="multiselect__tags">
+      <div ref="tags" class="multiselect__tags" :class="inputContainerClass">
         <div class="multiselect__tags-wrap" v-show="visibleValue.length > 0">
           <span v-for="option of visibleValue" @mousedown.prevent class="multiselect__tag">
             <span v-text="getOptionLabel(option)"></span>
