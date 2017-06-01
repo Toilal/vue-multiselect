@@ -5,10 +5,10 @@
   "author": "Damian Dulisz <damian.dulisz@monterail.com>",
   "private": false,
   "license": "MIT",
-  "main": "dist/vue-multiselect.min.js",
-  "jsnext:main": "dist/vue-multiselect.min.js",
+  "main": "dist/vue-multiselect.js",
+  "jsnext:main": "dist/vue-multiselect.js",
   "jspm": {
-    "main": "dist/vue-multiselect.min.js",
+    "main": "dist/vue-multiselect.js",
     "registry": "npm",
     "format": "esm"
   },
@@ -18,7 +18,7 @@
   },
   "scripts": {
     "dev": "node build/dev-server.js",
-    "bundle:dist": "rm -rf dist && webpack --config build/webpack.bundle.conf.js",
+    "bundle:dist": "rm -rf dist && webpack --config build/webpack.bundle.conf.js && webpack --config build/webpack.bundle.minified.conf.js",
     "bundle:lib": "babel src --out-dir lib",
     "bundle": "node build/bundle.js && npm run bundle:lib",
     "docs": "rm -rf gh-pages && mkdir gh-pages && node build/build.js && cp -r v1 gh-pages/v1",

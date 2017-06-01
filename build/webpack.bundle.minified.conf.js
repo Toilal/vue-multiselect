@@ -19,7 +19,7 @@ const webpackConfig = merge(base, {
   output: {
     path: config.bundle.assetsRoot,
     publicPath: config.bundle.assetsPublicPath,
-    filename: 'vue-multiselect.js',
+    filename: 'vue-multiselect.min.js',
     library: 'VueMultiselect',
     libraryTarget: 'umd'
   },
@@ -34,9 +34,13 @@ const webpackConfig = merge(base, {
     new webpack.DefinePlugin({
       'process.env': env
     }),
+    new webpack.optimize.UglifyJsPlugin({
+      compress: { warnings: false }
+    }),
     new ExtractTextPlugin({
-      filename: 'vue-multiselect.css'
-    })
+      filename: 'vue-multiselect.min.css'
+    }),
+    new OptimizeCSSPlugin()
   ]
 })
 
