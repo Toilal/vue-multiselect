@@ -18,7 +18,7 @@
   },
   "scripts": {
     "dev": "node build/dev-server.js",
-    "bundle:dist": "rm -rf dist && webpack --config build/webpack.bundle.conf.js && webpack --config build/webpack.bundle.minified.conf.js",
+    "bundle:dist": "rm -rf dist && cross-env NODE_ENV=production webpack --config build/webpack.bundle.conf.js && cross-env NODE_ENV=production webpack --config build/webpack.bundle.minified.conf.js",
     "bundle:lib": "babel src --out-dir lib",
     "bundle": "node build/bundle.js && npm run bundle:lib",
     "docs": "rm -rf gh-pages && mkdir gh-pages && node build/build.js && cp -r v1 gh-pages/v1",
