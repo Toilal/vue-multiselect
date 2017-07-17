@@ -51,6 +51,7 @@
         <span
           v-if="!searchable"
           class="multiselect__single"
+          :class="inputClass"
           v-text="currentOptionLabel">
         </span>
       </div>
