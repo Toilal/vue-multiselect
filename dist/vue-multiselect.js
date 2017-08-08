@@ -97,6 +97,12 @@ function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { de
 
 function _defineProperty(obj, key, value) { if (key in obj) { Object.defineProperty(obj, key, { value: value, enumerable: true, configurable: true, writable: true }); } else { obj[key] = value; } return obj; }
 
+function isEmpty(opt) {
+  if (opt === 0) return false;
+  if (Array.isArray(opt) && opt.length === 0) return true;
+  return !opt;
+}
+
 function includes(str, query) {
   if (str === undefined) str = 'undefined';
   if (str === null) str = 'null';
@@ -105,11 +111,9 @@ function includes(str, query) {
   return text.indexOf(query.trim()) !== -1;
 }
 
-function filterOptions(options, search, label) {
-  return label ? options.filter(function (option) {
-    return includes(option[label], search);
-  }) : options.filter(function (option) {
-    return includes(option, search);
+function filterOptions(options, search, label, customLabel) {
+  return options.filter(function (option) {
+    return includes(customLabel(option, label), search);
   });
 }
 
@@ -129,17 +133,21 @@ function flattenOptions(values, label) {
         });
         return prev.concat(curr[values]);
       }
-      return prev.concat(curr);
+      return prev;
     }, []);
   };
 }
 
-function filterGroups(search, label, values, groupLabel) {
+function filterGroups(search, label, values, groupLabel, customLabel) {
   return function (groups) {
     return groups.map(function (group) {
       var _ref;
 
-      var groupOptions = filterOptions(group[values], search, label);
+      if (!group[values]) {
+        console.warn('Options passed to vue-multiselect do not contain groups, despite the config.');
+        return [];
+      }
+      var groupOptions = filterOptions(group[values], search, label, customLabel);
 
       return groupOptions.length ? (_ref = {}, _defineProperty(_ref, groupLabel, group[groupLabel]), _defineProperty(_ref, values, groupOptions), _ref) : [];
     });
@@ -163,7 +171,8 @@ exports.default = {
     return {
       search: '',
       isOpen: false,
-      hasEnoughSpace: true,
+      prefferedOpenDirection: 'below',
+      optimizedHeight: this.maxHeight,
       internalValue: this.value || this.value === 0 ? (0, _utils2.default)(Array.isArray(this.value) ? this.value : [this.value]) : []
     };
   },
@@ -237,6 +246,7 @@ exports.default = {
     customLabel: {
       type: Function,
       default: function _default(option, label) {
+        if (isEmpty(option)) return '';
         return label ? option[label] : option;
       }
     },
@@ -285,6 +295,10 @@ exports.default = {
       default: function _default() {
         return [];
       }
+    },
+    preserveSearch: {
+      type: Boolean,
+      default: false
     }
   },
   mounted: function mounted() {
@@ -301,7 +315,7 @@ exports.default = {
       var options = this.options.concat();
 
       if (this.internalSearch) {
-        options = this.groupValues ? this.filterAndFlat(options, normalizedSearch, this.label) : filterOptions(options, normalizedSearch, this.label);
+        options = this.groupValues ? this.filterAndFlat(options, normalizedSearch, this.label) : filterOptions(options, normalizedSearch, this.label, this.customLabel);
 
         options = this.hideSelected ? options.filter(this.isNotSelected) : options;
       } else {
@@ -329,10 +343,8 @@ exports.default = {
       var _this2 = this;
 
       var options = this.groupValues ? this.flatAndStrip(this.options) : this.options;
-      return this.label ? options.map(function (element) {
-        return element[_this2.label] ? element[_this2.label].toString().toLowerCase() : null;
-      }) : options.map(function (element) {
-        return element.toString().toLowerCase();
+      return options.map(function (element) {
+        return _this2.customLabel(element, _this2.label).toString().toLowerCase();
       });
     },
     currentOptionLabel: function currentOptionLabel() {
@@ -361,7 +373,7 @@ exports.default = {
       return value === null || value === undefined ? [] : this.multiple ? (0, _utils2.default)(value) : (0, _utils2.default)([value]);
     },
     filterAndFlat: function filterAndFlat(options, search, label) {
-      return flow(filterGroups(search, label, this.groupValues, this.groupLabel), flattenOptions(this.groupValues, this.groupLabel))(options);
+      return flow(filterGroups(search, label, this.groupValues, this.groupLabel, this.customLabel), flattenOptions(this.groupValues, this.groupLabel))(options);
     },
     flatAndStrip: function flatAndStrip(options) {
       return flow(flattenOptions(this.groupValues, this.groupLabel), stripGroups)(options);
@@ -380,13 +392,16 @@ exports.default = {
       return !this.isSelected(option);
     },
     getOptionLabel: function getOptionLabel(option) {
-      if (!option && option !== 0) return '';
+      if (isEmpty(option)) return '';
 
       if (option.isTag) return option.label;
+
+      if (option.$isLabel) return option.$groupLabel;
+
       return this.customLabel(option, this.label) || '';
     },
     select: function select(option, key) {
-      if (this.blockKeys.indexOf(key) !== -1 || this.disabled || option.$isLabel) return;
+      if (this.blockKeys.indexOf(key) !== -1 || this.disabled || option.$isLabel || option.$isDisabled) return;
 
       if (this.max && this.multiple && this.internalValue.length === this.max) return;
       if (option.isTag) {
@@ -412,9 +427,14 @@ exports.default = {
       if (this.closeOnSelect) this.deactivate();
     },
     removeElement: function removeElement(option) {
+      var shouldClose = arguments.length > 1 && arguments[1] !== undefined ? arguments[1] : true;
+
       if (this.disabled) return;
 
-      if (!this.allowEmpty && this.internalValue.length <= 1) return;
+      if (!this.allowEmpty && this.internalValue.length <= 1) {
+        this.deactivate();
+        return;
+      }
 
       var index = (typeof option === 'undefined' ? 'undefined' : _typeof(option)) === 'object' ? this.valueKeys.indexOf(option[this.trackBy]) : this.valueKeys.indexOf(option);
 
@@ -422,16 +442,18 @@ exports.default = {
       this.$emit('remove', (0, _utils2.default)(option), this.id);
       this.$emit('input', this.getValue(), this.id);
 
-      if (this.closeOnSelect) this.deactivate();
+      if (this.closeOnSelect && shouldClose) this.deactivate();
     },
     removeLastElement: function removeLastElement() {
       if (this.blockKeys.indexOf('Delete') !== -1) return;
 
       if (this.search.length === 0 && Array.isArray(this.internalValue)) {
-        this.removeElement(this.internalValue[this.internalValue.length - 1]);
+        this.removeElement(this.internalValue[this.internalValue.length - 1], false);
       }
     },
     activate: function activate() {
+      var _this3 = this;
+
       if (this.isOpen || this.disabled) return;
 
       this.adjustPosition();
@@ -443,8 +465,10 @@ exports.default = {
       this.isOpen = true;
 
       if (this.searchable) {
-        this.search = '';
-        this.$refs.search.focus();
+        if (!this.preserveSearch) this.search = '';
+        this.$nextTick(function () {
+          return _this3.$refs.search.focus();
+        });
       } else {
         this.$el.focus();
       }
@@ -460,15 +484,25 @@ exports.default = {
       } else {
         this.$el.blur();
       }
-      this.search = '';
+      if (!this.preserveSearch) this.search = '';
       this.$emit('close', this.getValue(), this.id);
     },
     toggle: function toggle() {
       this.isOpen ? this.deactivate() : this.activate();
     },
     adjustPosition: function adjustPosition() {
-      if (typeof window !== 'undefined') {
-        this.hasEnoughSpace = this.$el.getBoundingClientRect().top + this.maxHeight < window.innerHeight;
+      if (typeof window === 'undefined') return;
+
+      var spaceAbove = this.$el.getBoundingClientRect().top;
+      var spaceBelow = window.innerHeight - this.$el.getBoundingClientRect().bottom;
+      var hasEnoughSpaceBelow = spaceBelow > this.maxHeight;
+
+      if (hasEnoughSpaceBelow || spaceBelow > spaceAbove || this.openDirection === 'below' || this.openDirection === 'bottom') {
+        this.prefferedOpenDirection = 'below';
+        this.optimizedHeight = Math.min(spaceBelow, this.maxHeight) - 40;
+      } else {
+        this.prefferedOpenDirection = 'above';
+        this.optimizedHeight = Math.min(spaceAbove, this.maxHeight) - 40;
       }
     }
   }
@@ -684,12 +718,7 @@ exports.default = {
   name: 'vue-multiselect',
   mixins: [_multiselectMixin2.default, _pointerMixin2.default],
   props: {
-    inputName: {
-      type: String,
-      default: ''
-    },
-
-    inputId: {
+    name: {
       type: String,
       default: ''
     },
@@ -739,6 +768,19 @@ exports.default = {
     disabled: {
       type: Boolean,
       default: false
+    },
+
+    openDirection: {
+      type: String,
+      default: ''
+    },
+    showNoResults: {
+      type: Boolean,
+      default: true
+    },
+    tabindex: {
+      type: Number,
+      default: 0
     }
   },
   computed: {
@@ -753,6 +795,23 @@ exports.default = {
     },
     selectedLabelText: function selectedLabelText() {
       return this.showLabels ? this.selectedLabel : '';
+    },
+    inputStyle: function inputStyle() {
+      if (this.multiple && this.value && this.value.length) {
+        return this.isOpen ? { 'width': 'auto' } : { 'display': 'none' };
+      }
+    },
+    contentStyle: function contentStyle() {
+      return this.options.length ? { 'display': 'inline-block' } : { 'display': 'block' };
+    },
+    isAbove: function isAbove() {
+      if (this.openDirection === 'above' || this.openDirection === 'top') {
+        return true;
+      } else if (this.openDirection === 'below' || this.openDirection === 'bottom') {
+        return false;
+      } else {
+        return this.prefferedOpenDirection === 'above';
+      }
     }
   }
 };
@@ -828,10 +887,10 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
   return _c('div', {
     staticClass: "multiselect",
     class: {
-      'multiselect--active': _vm.isOpen, 'multiselect--disabled': _vm.disabled, 'multiselect--above': !_vm.hasEnoughSpace
+      'multiselect--active': _vm.isOpen, 'multiselect--disabled': _vm.disabled, 'multiselect--above': _vm.isAbove
     },
     attrs: {
-      "tabindex": _vm.searchable ? -1 : 0
+      "tabindex": _vm.tabindex
     },
     on: {
       "focus": function($event) {
@@ -841,23 +900,23 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
         _vm.searchable ? false : _vm.deactivate()
       },
       "keydown": [function($event) {
-        if (_vm._k($event.keyCode, "down", 40)) { return; }
-        if ($event.target !== $event.currentTarget) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "down", 40)) { return null; }
+        if ($event.target !== $event.currentTarget) { return null; }
         $event.preventDefault();
         _vm.pointerForward()
       }, function($event) {
-        if (_vm._k($event.keyCode, "up", 38)) { return; }
-        if ($event.target !== $event.currentTarget) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "up", 38)) { return null; }
+        if ($event.target !== $event.currentTarget) { return null; }
         $event.preventDefault();
         _vm.pointerBackward()
       }, function($event) {
-        if (_vm._k($event.keyCode, "enter", 13) && _vm._k($event.keyCode, "tab", 9)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "enter", 13) && _vm._k($event.keyCode, "tab", 9)) { return null; }
         $event.stopPropagation();
-        if ($event.target !== $event.currentTarget) { return; }
+        if ($event.target !== $event.currentTarget) { return null; }
         _vm.addPointerElement($event)
       }],
       "keyup": function($event) {
-        if (_vm._k($event.keyCode, "esc", 27)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "esc", 27)) { return null; }
         _vm.deactivate()
       }
     }
@@ -866,10 +925,13 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
     on: {
       "mousedown": function($event) {
         $event.preventDefault();
+        $event.stopPropagation();
         _vm.toggle()
       }
     }
-  })]), _vm._v(" "), _c('div', {
+  })]), _vm._v(" "), _vm._t("clear", null, {
+    search: _vm.search
+  }), _vm._v(" "), _c('div', {
     ref: "tags",
     staticClass: "multiselect__tags",
     class: _vm.inputContainerClass
@@ -881,14 +943,9 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
       expression: "visibleValue.length > 0"
     }],
     staticClass: "multiselect__tags-wrap"
-  }, _vm._l((_vm.visibleValue), function(option) {
-    return _c('span', {
-      staticClass: "multiselect__tag",
-      on: {
-        "mousedown": function($event) {
-          $event.preventDefault();
-        }
-      }
+  }, [_vm._l((_vm.visibleValue), function(option) {
+    return [_vm._t("tag", [_c('span', {
+      staticClass: "multiselect__tag"
     }, [_c('span', {
       domProps: {
         "textContent": _vm._s(_vm.getOptionLabel(option))
@@ -901,7 +958,7 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
       },
       on: {
         "keydown": function($event) {
-          if (_vm._k($event.keyCode, "enter", 13)) { return; }
+          if (!('button' in $event) && _vm._k($event.keyCode, "enter", 13)) { return null; }
           $event.preventDefault();
           _vm.removeElement(option)
         },
@@ -910,8 +967,13 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
           _vm.removeElement(option)
         }
       }
-    })])
-  })), _vm._v(" "), (_vm.internalValue && _vm.internalValue.length > _vm.limit) ? [_c('strong', {
+    })])], {
+      option: option,
+      search: _vm.search,
+      remove: _vm.removeElement
+    })]
+  })], 2), _vm._v(" "), (_vm.internalValue && _vm.internalValue.length > _vm.limit) ? [_c('strong', {
+    staticClass: "multiselect__strong",
     domProps: {
       "textContent": _vm._s(_vm.limitText(_vm.internalValue.length - _vm.limit))
     }
@@ -931,9 +993,10 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
     ref: "search",
     staticClass: "multiselect__input",
     class: _vm.inputClass,
+    style: (_vm.inputStyle),
     attrs: {
-      "name": _vm.inputName,
-      "id": _vm.inputId,
+      "name": _vm.name,
+      "id": _vm.id,
       "type": "text",
       "autocomplete": "off",
       "placeholder": _vm.placeholder,
@@ -955,32 +1018,32 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
         _vm.deactivate()
       },
       "keyup": function($event) {
-        if (_vm._k($event.keyCode, "esc", 27)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "esc", 27)) { return null; }
         _vm.deactivate()
       },
       "keydown": [function($event) {
-        if (_vm._k($event.keyCode, "down", 40)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "down", 40)) { return null; }
         $event.preventDefault();
         _vm.pointerForward()
       }, function($event) {
-        if (_vm._k($event.keyCode, "up", 38)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "up", 38)) { return null; }
         $event.preventDefault();
         _vm.pointerBackward()
       }, function($event) {
-        if (_vm._k($event.keyCode, "enter", 13)) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "enter", 13)) { return null; }
         $event.preventDefault();
-      }, function($event) {
-        if (_vm._k($event.keyCode, "enter", 13) && _vm._k($event.keyCode, "tab", 9)) { return; }
         $event.stopPropagation();
-        if ($event.target !== $event.currentTarget) { return; }
+        if ($event.target !== $event.currentTarget) { return null; }
         _vm.addPointerElement($event)
       }, function($event) {
-        if (_vm._k($event.keyCode, "delete", [8, 46])) { return; }
+        if (!('button' in $event) && _vm._k($event.keyCode, "delete", [8, 46])) { return null; }
+        $event.stopPropagation();
         _vm.removeLastElement()
       }]
     }
   }) : _vm._e(), _vm._v(" "), (!_vm.searchable) ? _c('span', {
     staticClass: "multiselect__single",
+    class: _vm.inputClass,
     domProps: {
       "textContent": _vm._s(_vm.currentOptionLabel)
     }
@@ -988,7 +1051,7 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
     attrs: {
       "name": "multiselect"
     }
-  }, [_c('ul', {
+  }, [_c('div', {
     directives: [{
       name: "show",
       rawName: "v-show",
@@ -996,56 +1059,62 @@ module.exports={render:function (){var _vm=this;var _h=_vm.$createElement;var _c
       expression: "isOpen"
     }],
     ref: "list",
-    staticClass: "multiselect__content",
+    staticClass: "multiselect__content-wrapper",
     style: ({
-      maxHeight: _vm.maxHeight + 'px'
+      maxHeight: _vm.optimizedHeight + 'px'
     }),
     on: {
       "mousedown": function($event) {
         $event.preventDefault();
       }
     }
+  }, [_c('ul', {
+    staticClass: "multiselect__content",
+    style: (_vm.contentStyle)
   }, [_vm._t("beforeList"), _vm._v(" "), (_vm.multiple && _vm.max === _vm.internalValue.length) ? _c('li', [_c('span', {
     staticClass: "multiselect__option"
   }, [_vm._t("maxElements", [_vm._v("Maximum of " + _vm._s(_vm.max) + " options selected. First remove a selected option to select another.")])], 2)]) : _vm._e(), _vm._v(" "), (!_vm.max || _vm.internalValue.length < _vm.max) ? _vm._l((_vm.filteredOptions), function(option, index) {
     return _c('li', {
       key: index,
       staticClass: "multiselect__element"
-    }, [(!(option && option.$isLabel)) ? _c('span', {
+    }, [(!(option && (option.$isLabel || option.$isDisabled))) ? _c('span', {
       staticClass: "multiselect__option",
       class: _vm.optionHighlight(index, option),
       attrs: {
-        "tabindex": "0",
         "data-select": option && option.isTag ? _vm.tagPlaceholder : _vm.selectLabelText,
         "data-selected": _vm.selectedLabelText,
         "data-deselect": _vm.deselectLabelText
       },
       on: {
-        "mousedown": function($event) {
-          $event.preventDefault();
+        "click": function($event) {
+          $event.stopPropagation();
           _vm.select(option)
         },
         "mouseenter": function($event) {
+          if ($event.target !== $event.currentTarget) { return null; }
           _vm.pointerSet(index)
         }
       }
     }, [_vm._t("option", [_c('span', [_vm._v(_vm._s(_vm.getOptionLabel(option)))])], {
       option: option,
       search: _vm.search
-    })], 2) : _vm._e(), _vm._v(" "), (option && option.$isLabel) ? _c('span', {
+    })], 2) : _vm._e(), _vm._v(" "), (option && (option.$isLabel || option.$isDisabled)) ? _c('span', {
       staticClass: "multiselect__option multiselect__option--disabled",
       class: _vm.optionHighlight(index, option)
-    }, [_vm._v("\n              " + _vm._s(option.$groupLabel) + "\n            ")]) : _vm._e()])
+    }, [_vm._t("option", [_c('span', [_vm._v(_vm._s(_vm.getOptionLabel(option)))])], {
+      option: option,
+      search: _vm.search
+    })], 2) : _vm._e()])
   }) : _vm._e(), _vm._v(" "), _c('li', {
     directives: [{
       name: "show",
       rawName: "v-show",
-      value: (_vm.filteredOptions.length === 0 && _vm.search && !_vm.loading),
-      expression: "filteredOptions.length === 0 && search && !loading"
+      value: (_vm.showNoResults && (_vm.filteredOptions.length === 0 && _vm.search && !_vm.loading)),
+      expression: "showNoResults && (filteredOptions.length === 0 && search && !loading)"
     }]
   }, [_c('span', {
     staticClass: "multiselect__option"
-  }, [_vm._t("noResult", [_vm._v("No elements found. Consider changing the search query.")])], 2)]), _vm._v(" "), _vm._t("afterList")], 2)])], 2)
+  }, [_vm._t("noResult", [_vm._v("No elements found. Consider changing the search query.")])], 2)]), _vm._v(" "), _vm._t("afterList")], 2)])])], 2)
 },staticRenderFns: []}
 
 /***/ })

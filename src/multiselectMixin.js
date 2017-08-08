@@ -1,5 +1,11 @@
 import deepClone from './utils'
 
+function isEmpty (opt) {
+  if (opt === 0) return false
+  if (Array.isArray(opt) && opt.length === 0) return true
+  return !opt
+}
+
 function includes (str, query) {
   /* istanbul ignore else */
   if (str === undefined) str = 'undefined'
@@ -9,10 +15,8 @@ function includes (str, query) {
   return text.indexOf(query.trim()) !== -1
 }
 
-function filterOptions (options, search, label) {
-  return label
-    ? options.filter(option => includes(option[label], search))
-    : options.filter(option => includes(option, search))
+function filterOptions (options, search, label, customLabel) {
+  return options.filter(option => includes(customLabel(option, label), search))
 }
 
 function stripGroups (options) {
@@ -30,14 +34,19 @@ function flattenOptions (values, label) {
         })
         return prev.concat(curr[values])
       }
-      return prev.concat(curr)
+      return prev
     }, [])
 }
 
-function filterGroups (search, label, values, groupLabel) {
+function filterGroups (search, label, values, groupLabel, customLabel) {
   return (groups) =>
     groups.map(group => {
-      const groupOptions = filterOptions(group[values], search, label)
+      /* istanbul ignore else */
+      if (!group[values]) {
+        console.warn(`Options passed to vue-multiselect do not contain groups, despite the config.`)
+        return []
+      }
+      const groupOptions = filterOptions(group[values], search, label, customLabel)
 
       return groupOptions.length
         ? {
@@ -55,7 +64,8 @@ export default {
     return {
       search: '',
       isOpen: false,
-      hasEnoughSpace: true,
+      prefferedOpenDirection: 'below',
+      optimizedHeight: this.maxHeight,
       internalValue: this.value || this.value === 0
         ? deepClone(Array.isArray(this.value) ? this.value : [this.value])
         : []
@@ -188,6 +198,7 @@ export default {
     customLabel: {
       type: Function,
       default (option, label) {
+        if (isEmpty(option)) return ''
         return label ? option[label] : option
       }
     },
@@ -279,6 +290,10 @@ export default {
       default () {
         return []
       }
+    },
+    preserveSearch: {
+      type: Boolean,
+      default: false
     }
   },
   mounted () {
@@ -298,7 +313,7 @@ export default {
       if (this.internalSearch) {
         options = this.groupValues
           ? this.filterAndFlat(options, normalizedSearch, this.label)
-          : filterOptions(options, normalizedSearch, this.label)
+          : filterOptions(options, normalizedSearch, this.label, this.customLabel)
 
         options = this.hideSelected
           ? options.filter(this.isNotSelected)
@@ -323,9 +338,7 @@ export default {
     },
     optionKeys () {
       const options = this.groupValues ? this.flatAndStrip(this.options) : this.options
-      return this.label
-        ? options.map(element => element[this.label] ? element[this.label].toString().toLowerCase() : null)
-        : options.map(element => element.toString().toLowerCase())
+      return options.map(element => this.customLabel(element, this.label).toString().toLowerCase())
     },
     currentOptionLabel () {
       return this.multiple
@@ -380,7 +393,7 @@ export default {
      */
     filterAndFlat (options, search, label) {
       return flow(
-        filterGroups(search, label, this.groupValues, this.groupLabel),
+        filterGroups(search, label, this.groupValues, this.groupLabel, this.customLabel),
         flattenOptions(this.groupValues, this.groupLabel)
       )(options)
     },
@@ -444,9 +457,12 @@ export default {
      */
     getOptionLabel (option) {
       /* istanbul ignore else */
-      if (!option && option !== 0) return ''
+      if (isEmpty(option)) return ''
       /* istanbul ignore else */
       if (option.isTag) return option.label
+      /* istanbul ignore else */
+      if (option.$isLabel) return option.$groupLabel
+
       return this.customLabel(option, this.label) || ''
     },
     /**
@@ -459,7 +475,7 @@ export default {
      */
     select (option, key) {
       /* istanbul ignore else */
-      if (this.blockKeys.indexOf(key) !== -1 || this.disabled || option.$isLabel) return
+      if (this.blockKeys.indexOf(key) !== -1 || this.disabled || option.$isLabel || option.$isDisabled) return
       /* istanbul ignore else */
       if (this.max && this.multiple && this.internalValue.length === this.max) return
       if (option.isTag) {
@@ -493,11 +509,14 @@ export default {
      * @param  {type} option description
      * @returns {type}        description
      */
-    removeElement (option) {
+    removeElement (option, shouldClose = true) {
       /* istanbul ignore else */
       if (this.disabled) return
       /* istanbul ignore else */
-      if (!this.allowEmpty && this.internalValue.length <= 1) return
+      if (!this.allowEmpty && this.internalValue.length <= 1) {
+        this.deactivate()
+        return
+      }
 
       const index = typeof option === 'object'
         ? this.valueKeys.indexOf(option[this.trackBy])
@@ -508,7 +527,7 @@ export default {
       this.$emit('input', this.getValue(), this.id)
 
       /* istanbul ignore else */
-      if (this.closeOnSelect) this.deactivate()
+      if (this.closeOnSelect && shouldClose) this.deactivate()
     },
     /**
      * Calls this.removeElement() with the last element
@@ -521,7 +540,7 @@ export default {
       if (this.blockKeys.indexOf('Delete') !== -1) return
       /* istanbul ignore else */
       if (this.search.length === 0 && Array.isArray(this.internalValue)) {
-        this.removeElement(this.internalValue[this.internalValue.length - 1])
+        this.removeElement(this.internalValue[this.internalValue.length - 1], false)
       }
     },
     /**
@@ -541,8 +560,8 @@ export default {
       this.isOpen = true
       /* istanbul ignore else  */
       if (this.searchable) {
-        this.search = ''
-        this.$refs.search.focus()
+        if (!this.preserveSearch) this.search = ''
+        this.$nextTick(() => this.$refs.search.focus())
       } else {
         this.$el.focus()
       }
@@ -563,7 +582,7 @@ export default {
       } else {
         this.$el.blur()
       }
-      this.search = ''
+      if (!this.preserveSearch) this.search = ''
       this.$emit('close', this.getValue(), this.id)
     },
     /**
@@ -583,9 +602,18 @@ export default {
      * detecting where to expand the dropdown
      */
     adjustPosition () {
-      /* istanbul ignore else */
-      if (typeof window !== 'undefined') {
-        this.hasEnoughSpace = this.$el.getBoundingClientRect().top + this.maxHeight < window.innerHeight
+      if (typeof window === 'undefined') return
+
+      const spaceAbove = this.$el.getBoundingClientRect().top
+      const spaceBelow = window.innerHeight - this.$el.getBoundingClientRect().bottom
+      const hasEnoughSpaceBelow = spaceBelow > this.maxHeight
+
+      if (hasEnoughSpaceBelow || spaceBelow > spaceAbove || this.openDirection === 'below' || this.openDirection === 'bottom') {
+        this.prefferedOpenDirection = 'below'
+        this.optimizedHeight = Math.min(spaceBelow, this.maxHeight) - 40
+      } else {
+        this.prefferedOpenDirection = 'above'
+        this.optimizedHeight = Math.min(spaceAbove, this.maxHeight) - 40
       }
     }
   }
